@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FUDMA Food & Mini Mart</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>🍽️ FUDMA Food & Mini Mart</h1>
+  <a href="staff.html">Staff</a>
+</header>
+
+<main>
+  <div id="menu"></div>
+
+  <h3 class="section">My Orders</h3>
+  <div id="myOrders"><p class="muted">No orders yet. Open a category above and pick your items.</p></div>
+</main>
+
+<div class="cartbar hidden" id="cartbar">
+  <div><b id="cartCount">0</b> items · <b id="cartTotal">₦0</b></div>
+  <button onclick="openCheckout()">View Order</button>
+</div>
+
+<div class="modal" id="modal" onclick="if(event.target===this)closeCheckout()">
+  <div class="sheet">
+    <h2>Your Order</h2>
+    <div id="summary"></div>
+    <label>Your Name</label>
+    <input id="name" placeholder="e.g. Aisha Musa" autocomplete="name">
+    <label>Student / Matric ID</label>
+    <input id="matric" placeholder="e.g. ENG/2024/12345" autocapitalize="characters">
+    <label>Note (optional)</label>
+    <textarea id="note" rows="2" placeholder="e.g. Hostel B, Room 12 / less pepper"></textarea>
+    <div class="err" id="err"></div>
+    <button class="btn" id="submitBtn" onclick="submitOrder()">Place Order</button>
+    <button class="btn ghost" onclick="closeCheckout()">Back to menu</button>
+  </div>
+</div>
+
+<script>
+const money = n => '₦' + Number(n).toLocaleString();
+const STEPS = ['Pending', 'Accepted', 'Ready', 'Delivered'];
+let menu = [], cart = {};
+
+const safe = (fn, d) => { try { return fn(); } catch { return d; } };
+const getIds = () => safe(() => JSON.parse(localStorage.getItem('myOrderIds') || '[]'), []);
+const saveIds = ids => safe(() => localStorage.setItem('myOrderIds', JSON.stringify(ids)));
+
+async function loadMenu() {
+  menu = await (await fetch('/api/menu')).json();
+  const wrap = document.getElementById('menu');
+  wrap.innerHTML = '';
+  menu.forEach((cat, ci) => {
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.innerHTML = `
+      <button class="cat-btn" onclick="toggleCat(this)">
+        <span>${cat.icon} ${cat.category} <small>(${cat.items.length})</small></span>
+        <span class="arrow">▾</span>
+      </button>
+      <div class="cat-body">
+        ${cat.items.map(it => `
+          <div class="item">
+            <div><div class="n">${it.name}</div><div class="p">${money(it.price)}</div></div>
+            <div class="qty" id="q-${it.id}"></div>
+          </div>`).join('')}
+      </div>`;
+    wrap.appendChild(d);
+  });
+  menu.forEach(c => c.items.forEach(renderQty));
+}
+
+function toggleCat(btn) {
+  const card = btn.parentElement;
+  const wasOpen = card.classList.contains('open');
+  document.querySelectorAll('#menu .card').forEach(c => c.classList.remove('open'));
+  if (!wasOpen) { card.classList.add('open'); card.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+}
+
+function renderQty(it) {
+  const el = document.getElementById('q-' + it.id);
+  if (!el) return;
+  const q = cart[it.id] || 0;
+  el.innerHTML = q === 0
+    ? `<button class="add" onclick="change('${it.id}',1)">+</button>`
+    : `<button onclick="change('${it.id}',-1)">−</button><span>${q}</span><button onclick="change('${it.id}',1)">+</button>`;
+}
+
+function find(id) { for (const c of menu) for (const i of c.items) if (i.id === id) return i; }
+
+function change(id, d) {
+  const q = Math.max(0, Math.min(50, (cart[id] || 0) + d));
+  if (q === 0) delete cart[id]; else cart[id] = q;
+  renderQty(find(id));
+  updateBar();
+}
+
+function totals() {
+  let count = 0, total = 0;
+  for (const id in cart) { count += cart[id]; total += cart[id] * find(id).price; }
+  return { count, total };
+}
+
+function updateBar() {
+  const { count, total } = totals();
+  document.getElementById('cartbar').classList.toggle('hidden', count === 0);
+  document.getElementById('cartCount').textContent = count;
+  document.getElementById('cartTotal').textContent = money(total);
+}
+
+function openCheckout() {
+  const rows = Object.keys(cart).map(id => {
+    const it = find(id);
+    return `<div class="row"><span>${cart[id]} × ${it.name}</span><span>${money(it.price * cart[id])}</span></div>`;
+  }).join('');
+  document.getElementById('summary').innerHTML = rows + `<div class="row total"><span>Total</span><span>${money(totals().total)}</span></div>`;
+  document.getElementById('name').value = safe(() => localStorage.getItem('custName') || '', '');
+  document.getElementById('matric').value = safe(() => localStorage.getItem('custMatric') || '', '');
+  document.getElementById('err').textContent = '';
+  document.getElementById('modal').classList.add('show');
+}
+function closeCheckout() { document.getElementById('modal').classList.remove('show'); }
+
+async function submitOrder() {
+  const btn = document.getElementById('submitBtn');
+  const body = {
+    name: document.getElementById('name').value,
+    matric: document.getElementById('matric').value,
+    note: document.getElementById('note').value,
+    items: Object.keys(cart).map(id => ({ id, qty: cart[id] }))
+  };
+  btn.disabled = true; btn.textContent = 'Sending...';
+  try {
+    const r = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Could not place order');
+    safe(() => { localStorage.setItem('custName', body.name); localStorage.setItem('custMatric', body.matric); });
+    saveIds([data.id, ...getIds()].slice(0, 30));
+    cart = {};
+    menu.forEach(c => c.items.forEach(renderQty));
+    updateBar(); closeCheckout(); loadOrders();
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  } catch (e) {
+    document.getElementById('err').textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Place Order';
+  }
+}
+
+const MESSAGES = {
+  Pending: '⏳ Order received. Waiting for staff to accept it.',
+  Accepted: '✅ Your order has been accepted and is being prepared.',
+  Ready: '🔔 Your order is ready! Please come and pick it up.',
+  Delivered: '🎉 Delivered. Enjoy, and thank you!',
+  Rejected: '❌ Sorry, staff could not accept this order. Please try again or contact the shop.'
+};
+
+async function loadOrders() {
+  const ids = getIds();
+  const box = document.getElementById('myOrders');
+  if (!ids.length) return;
+  const orders = await (await fetch('/api/track?ids=' + ids.join(','))).json();
+  orders.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  box.innerHTML = orders.map(o => {
+    const step = STEPS.indexOf(o.status);
+    return `<div class="card order">
+      <div class="top"><b>${o.id}</b><span class="badge s-${o.status}">${o.status}</span></div>
+      <div class="muted">${o.items.map(i => i.qty + '× ' + i.name).join(', ')}</div>
+      <div class="row"><span class="muted">${new Date(o.createdAt).toLocaleString()}</span><b>${money(o.total)}</b></div>
+      ${o.status === 'Rejected' ? '' : `<div class="steps">${STEPS.map((s, i) => `<div class="${i <= step ? 'on' : ''}"></div>`).join('')}</div>`}
+      <div class="msg">${MESSAGES[o.status]}</div>
+    </div>`;
+  }).join('');
+}
+
+// live updates from staff actions
+const es = new EventSource('/api/events');
+es.addEventListener('update', loadOrders);
+setInterval(loadOrders, 15000); // backup refresh
+
+loadMenu();
+loadOrders();
+</script>
+</body>
+</html>

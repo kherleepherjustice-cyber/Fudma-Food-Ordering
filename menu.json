@@ -1,0 +1,91 @@
+[
+  {
+    "category": "Meals",
+    "icon": "🍛",
+    "items": [
+      { "name": "Rice & Beans", "price": 1500 },
+      { "name": "White Rice", "price": 1200 },
+      { "name": "Jollof Rice", "price": 1500 },
+      { "name": "Fried Rice", "price": 1500 },
+      { "name": "Spaghetti", "price": 1000 },
+      { "name": "Macaroni", "price": 1000 },
+      { "name": "Pounded Yam", "price": 2000 },
+      { "name": "Moi-Moi", "price": 500 },
+      { "name": "Indomie and Egg", "price": 750 },
+      { "name": "Amala", "price": 500 },
+      { "name": "Chips and Eggs", "price": 2500 }
+    ]
+  },
+  {
+    "category": "Meat",
+    "icon": "🍗",
+    "items": [
+      { "name": "Chicken", "price": 1500 },
+      { "name": "Beef Meat", "price": 1000 },
+      { "name": "Cow Legs", "price": 1500 },
+      { "name": "Fish", "price": 1000 },
+      { "name": "Cat Fish", "price": 3000 },
+      { "name": "Cow Tail", "price": 1000 },
+      { "name": "Cow Head", "price": 1000 }
+    ]
+  },
+  {
+    "category": "Snacks",
+    "icon": "🥟",
+    "items": [
+      { "name": "Shawarma", "price": 2500 },
+      { "name": "Puff Puff", "price": 250 },
+      { "name": "Meat Pie", "price": 500 },
+      { "name": "Chicken Pie", "price": 700 },
+      { "name": "Egg Roll", "price": 500 },
+      { "name": "Spring Roll", "price": 700 },
+      { "name": "Pizza", "price": 4000 },
+      { "name": "Mac-D", "price": 800 },
+      { "name": "Milk Donuts", "price": 500 },
+      { "name": "Donut", "price": 500 }
+    ]
+  },
+  {
+    "category": "Soft Drinks",
+    "icon": "🥤",
+    "items": [
+      { "name": "Coca-Cola", "price": 500 },
+      { "name": "Teem", "price": 500 },
+      { "name": "Fanta", "price": 500 },
+      { "name": "Sprite", "price": 500 },
+      { "name": "Go Fresh", "price": 500 },
+      { "name": "Maltina", "price": 700 },
+      { "name": "Bottle Water", "price": 250 },
+      { "name": "Predator", "price": 500 },
+      { "name": "Zobo", "price": 200 },
+      { "name": "Suya Milk", "price": 200 },
+      { "name": "Kunun Aya", "price": 300 },
+      { "name": "Kunun Zaki", "price": 150 },
+      { "name": "Kunun Gaida", "price": 300 }
+    ]
+  },
+  {
+    "category": "Bread",
+    "icon": "🍞",
+    "items": [
+      { "name": "Sliced Bread", "price": 800 },
+      { "name": "Wheat Bread", "price": 1500 },
+      { "name": "Ahmad Bread", "price": 800 },
+      { "name": "Nakowa Bread", "price": 600 }
+    ]
+  },
+  {
+    "category": "Mini Mart",
+    "icon": "🛒",
+    "items": [
+      { "name": "Note Book (Big)", "price": 600 },
+      { "name": "Note Book (Small)", "price": 300 },
+      { "name": "Ballpoint Pen (Blue/Black)", "price": 150 },
+      { "name": "Mathematical Set", "price": 1200 },
+      { "name": "A4 Paper (1 Rim)", "price": 4500 },
+      { "name": "Tissue Paper", "price": 400 },
+      { "name": "Toothpaste", "price": 800 },
+      { "name": "Soap / Detergent", "price": 350 }
+    ]
+  }
+]

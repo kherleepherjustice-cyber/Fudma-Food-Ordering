@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Staff Dashboard - FUDMA Food</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>👨‍🍳 Staff Dashboard</h1>
+  <span><a href="index.html">Customer page</a> <a href="#" id="logout" style="display:none;margin-left:12px" onclick="logout()">Log out</a></span>
+</header>
+
+<div class="login" id="loginBox">
+  <div class="card" style="padding:20px">
+    <h2 style="margin-top:0">Staff Login</h2>
+    <label>Staff Matric Number</label>
+    <input id="staffMatric" placeholder="ENG/2024/32910" autocapitalize="characters" onkeydown="if(event.key==='Enter')login()">
+    <div class="err" id="loginErr"></div>
+    <button class="btn" onclick="login()">Log in</button>
+  </div>
+</div>
+
+<main id="dash" style="display:none">
+  <div class="stats">
+    <div class="stat"><span class="muted">Pending orders</span><b id="sPending">0</b></div>
+    <div class="stat"><span class="muted">Total orders</span><b id="sOrders">0</b></div>
+    <div class="stat"><span class="muted">Customers</span><b id="sUsers">0</b></div>
+    <div class="stat"><span class="muted">Completed sales</span><b id="sRevenue">₦0</b></div>
+  </div>
+
+  <div class="tabs" id="tabs"></div>
+  <div id="orders"></div>
+
+  <h3 class="section">Recent Transactions</h3>
+  <div style="overflow-x:auto"><table>
+    <thead><tr><th>ID</th><th>Order</th><th>Matric</th><th>Amount</th><th>Status</th></tr></thead>
+    <tbody id="tx"></tbody>
+  </table></div>
+</main>
+
+<script>
+const money = n => '₦' + Number(n).toLocaleString();
+let token = sessionStorage.getItem('staffToken') || '';
+let filter = 'Active';
+let orders = [];
+const FILTERS = ['Active', 'Pending', 'Accepted', 'Ready', 'Delivered', 'Rejected', 'All'];
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { 'Content-Type': 'application/json', 'x-token': token } });
+  const data = await r.json();
+  if (r.status === 401 && token) { logout(); }
+  if (!r.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
+async function login() {
+  const err = document.getElementById('loginErr');
+  err.textContent = '';
+  try {
+    const r = await fetch('/api/staff/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ matric: document.getElementById('staffMatric').value }) });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    token = data.token;
+    sessionStorage.setItem('staffToken', token);
+    showDash();
+  } catch (e) { err.textContent = e.message; }
+}
+
+function logout() {
+  token = ''; sessionStorage.removeItem('staffToken');
+  document.getElementById('dash').style.display = 'none';
+  document.getElementById('logout').style.display = 'none';
+  document.getElementById('loginBox').style.display = 'block';
+}
+
+function showDash() {
+  document.getElementById('loginBox').style.display = 'none';
+  document.getElementById('dash').style.display = 'block';
+  document.getElementById('logout').style.display = 'inline';
+  refresh();
+}
+
+function renderTabs() {
+  document.getElementById('tabs').innerHTML = FILTERS.map(f =>
+    `<button class="${f === filter ? 'on' : ''}" onclick="setFilter('${f}')">${f}</button>`).join('');
+}
+function setFilter(f) { filter = f; renderTabs(); renderOrders(); }
+
+function buttons(o) {
+  const b = (st, cls, label) => `<button class="${cls}" onclick="setStatus('${o.id}','${st}')">${label}</button>`;
+  if (o.status === 'Pending') return b('Accepted', 'a-acc', 'Accept') + b('Rejected', 'a-rej', 'Reject');
+  if (o.status === 'Accepted') return b('Ready', 'a-rdy', 'Mark Ready');
+  if (o.status === 'Ready') return b('Delivered', 'a-del', 'Mark Delivered');
+  return '';
+}
+
+function renderOrders() {
+  const list = orders.filter(o =>
+    filter === 'All' ? true :
+    filter === 'Active' ? ['Pending', 'Accepted', 'Ready'].includes(o.status) :
+    o.status === filter);
+  document.getElementById('orders').innerHTML = list.length ? list.map(o => `
+    <div class="card order">
+      <div class="top"><b>${o.id} · ${esc(o.name)}</b><span class="badge s-${o.status}">${o.status}</span></div>
+      <div class="muted">${esc(o.matric)} · ${new Date(o.createdAt).toLocaleString()}</div>
+      <div style="margin:8px 0">${o.items.map(i => `<div class="row"><span>${i.qty} × ${esc(i.name)}</span><span>${money(i.price * i.qty)}</span></div>`).join('')}
+      <div class="row total"><span>Total</span><span>${money(o.total)}</span></div></div>
+      ${o.note ? `<div class="msg">📝 ${esc(o.note)}</div>` : ''}
+      <div class="actions">${buttons(o)}</div>
+    </div>`).join('') : '<p class="muted">No orders in this view.</p>';
+}
+
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+async function setStatus(id, status) {
+  try { await api(`/api/staff/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); refresh(); }
+  catch (e) { alert(e.message); }
+}
+
+async function refresh() {
+  if (!token) return;
+  try {
+    orders = await api('/api/staff/orders');
+    const s = await api('/api/staff/summary');
+    document.getElementById('sPending').textContent = s.pending;
+    document.getElementById('sOrders').textContent = s.orders;
+    document.getElementById('sUsers').textContent = s.users;
+    document.getElementById('sRevenue').textContent = money(s.revenue);
+    document.getElementById('tx').innerHTML = s.transactions.map(t =>
+      `<tr><td>${t.id}</td><td>${t.orderId}</td><td>${esc(t.matric)}</td><td>${money(t.amount)}</td><td>${t.status}</td></tr>`).join('');
+    renderTabs(); renderOrders();
+  } catch (e) { /* handled in api() */ }
+}
+
+const es = new EventSource('/api/events');
+es.addEventListener('update', refresh);
+setInterval(refresh, 15000);
+renderTabs();
+if (token) showDash();
+</script>
+</body>
+</html>
