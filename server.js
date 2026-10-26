@@ -8,7 +8,9 @@ const crypto = require('crypto');
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+const pub = path.join(__dirname, 'public');
+if (fs.existsSync(pub)) app.use(express.static(pub));
+['index.html', 'staff.html', 'style.css'].forEach((f) => app.get(f === 'index.html' ? ['/', '/index.html'] : '/' + f, (req, res) => res.sendFile(path.join(__dirname, f))));
 
 // ---------- Staff login codes (group matric numbers) ----------
 const STAFF_MATRICS = [
