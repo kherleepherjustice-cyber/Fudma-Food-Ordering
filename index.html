@@ -32,6 +32,21 @@
     <input id="name" placeholder="e.g. Aisha Musa" autocomplete="name">
     <label>Student / Matric ID</label>
     <input id="matric" placeholder="e.g. ENG/2024/12345" autocapitalize="characters">
+    <label>How do you want to receive it?</label>
+    <div id="deliveryOpts"></div>
+    <div id="addrBox" style="display:none">
+      <label>Delivery location</label>
+      <input id="address" placeholder="e.g. Engineering Dept, Room 12 / Hostel B / Katsina road">
+    </div>
+    <label>How will you pay?</label>
+    <div class="opt" onclick="setPay('cash')"><input type="radio" name="pay" value="cash" id="payCash" checked><span><b>Cash</b><br><small class="muted">Pay when you collect or receive it</small></span></div>
+    <div class="opt" onclick="setPay('online')"><input type="radio" name="pay" value="online" id="payOnline"><span><b>Online (bank transfer)</b><br><small class="muted">Transfer now, staff confirm your payment</small></span></div>
+    <div id="onlineBox" class="paybox" style="display:none">
+      <div class="muted">Transfer the total to:</div>
+      <div id="bankInfo"></div>
+      <label>Your transfer reference / sender name (optional)</label>
+      <input id="payRef" placeholder="e.g. Aisha Musa">
+    </div>
     <label>Note (optional)</label>
     <textarea id="note" rows="2" placeholder="e.g. Hostel B, Room 12 / less pepper"></textarea>
     <div class="err" id="err"></div>
@@ -43,11 +58,33 @@
 <script>
 const money = n => '₦' + Number(n).toLocaleString();
 const STEPS = ['Pending', 'Accepted', 'Ready', 'Delivered'];
-let menu = [], cart = {};
+let menu = [], cart = {}, cfg = { delivery: {}, pay: {} }, deliveryType = 'pickup', payMethod = 'cash';
 
 const safe = (fn, d) => { try { return fn(); } catch { return d; } };
 const getIds = () => safe(() => JSON.parse(localStorage.getItem('myOrderIds') || '[]'), []);
 const saveIds = ids => safe(() => localStorage.setItem('myOrderIds', JSON.stringify(ids)));
+
+async function loadConfig() {
+  cfg = await (await fetch('/api/config')).json();
+  document.getElementById('deliveryOpts').innerHTML = Object.keys(cfg.delivery).map(k => {
+    const d = cfg.delivery[k];
+    return `<div class="opt" onclick="setDelivery('${k}')"><input type="radio" name="del" value="${k}" id="del-${k}" ${k === deliveryType ? 'checked' : ''}><span><b>${d.label}</b><br><small class="muted">${d.fee ? 'Delivery fee ' + money(d.fee) : 'No delivery fee'}</small></span></div>`;
+  }).join('');
+  document.getElementById('bankInfo').innerHTML =
+    `<div class="row"><span>Bank</span><b>${cfg.pay.bank}</b></div><div class="row"><span>Account name</span><b>${cfg.pay.accountName}</b></div><div class="row"><span>Account number</span><b>${cfg.pay.accountNumber}</b></div>`;
+}
+
+function setDelivery(k) {
+  deliveryType = k;
+  const r = document.getElementById('del-' + k); if (r) r.checked = true;
+  document.getElementById('addrBox').style.display = k === 'pickup' ? 'none' : 'block';
+  renderSummary();
+}
+function setPay(m) {
+  payMethod = m;
+  document.getElementById(m === 'cash' ? 'payCash' : 'payOnline').checked = true;
+  document.getElementById('onlineBox').style.display = m === 'online' ? 'block' : 'none';
+}
 
 async function loadMenu() {
   menu = await (await fetch('/api/menu')).json();
@@ -111,12 +148,20 @@ function updateBar() {
   document.getElementById('cartTotal').textContent = money(total);
 }
 
-function openCheckout() {
+function renderSummary() {
   const rows = Object.keys(cart).map(id => {
     const it = find(id);
     return `<div class="row"><span>${cart[id]} × ${it.name}</span><span>${money(it.price * cart[id])}</span></div>`;
   }).join('');
-  document.getElementById('summary').innerHTML = rows + `<div class="row total"><span>Total</span><span>${money(totals().total)}</span></div>`;
+  const fee = (cfg.delivery[deliveryType] || { fee: 0 }).fee;
+  document.getElementById('summary').innerHTML = rows +
+    `<div class="row"><span>Items</span><span>${money(totals().total)}</span></div>` +
+    `<div class="row"><span>Delivery fee</span><span>${fee ? money(fee) : 'Free'}</span></div>` +
+    `<div class="row total"><span>Total to pay</span><span>${money(totals().total + fee)}</span></div>`;
+}
+
+function openCheckout() {
+  renderSummary();
   document.getElementById('name').value = safe(() => localStorage.getItem('custName') || '', '');
   document.getElementById('matric').value = safe(() => localStorage.getItem('custMatric') || '', '');
   document.getElementById('err').textContent = '';
@@ -130,6 +175,9 @@ async function submitOrder() {
     name: document.getElementById('name').value,
     matric: document.getElementById('matric').value,
     note: document.getElementById('note').value,
+    deliveryType, paymentMethod: payMethod,
+    address: document.getElementById('address').value,
+    payRef: document.getElementById('payRef').value,
     items: Object.keys(cart).map(id => ({ id, qty: cart[id] }))
   };
   btn.disabled = true; btn.textContent = 'Sending...';
@@ -169,6 +217,7 @@ async function loadOrders() {
     return `<div class="card order">
       <div class="top"><b>${o.id}</b><span class="badge s-${o.status}">${o.status}</span></div>
       <div class="muted">${o.items.map(i => i.qty + '× ' + i.name).join(', ')}</div>
+      <div class="muted">${o.deliveryType && o.deliveryType !== 'pickup' ? '🚚 Delivery (' + money(o.deliveryFee) + ')' : '🏪 Pick up'} · ${o.paymentMethod === 'online' ? 'Online transfer' : 'Cash'} · <b>${o.paymentStatus === 'Paid' ? '✅ Paid' : o.paymentStatus === 'Cancelled' ? 'Cancelled' : '⏳ Not yet paid'}</b></div>
       <div class="row"><span class="muted">${new Date(o.createdAt).toLocaleString()}</span><b>${money(o.total)}</b></div>
       ${o.status === 'Rejected' ? '' : `<div class="steps">${STEPS.map((s, i) => `<div class="${i <= step ? 'on' : ''}"></div>`).join('')}</div>`}
       <div class="msg">${MESSAGES[o.status]}</div>
@@ -181,6 +230,7 @@ const es = new EventSource('/api/events');
 es.addEventListener('update', loadOrders);
 setInterval(loadOrders, 15000); // backup refresh
 
+loadConfig();
 loadMenu();
 loadOrders();
 </script>

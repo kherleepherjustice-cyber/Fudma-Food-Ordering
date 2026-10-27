@@ -8,9 +8,14 @@ const crypto = require('crypto');
 
 const app = express();
 app.use(express.json());
-const pub = path.join(__dirname, 'public');
-if (fs.existsSync(pub)) app.use(express.static(pub));
-['index.html', 'staff.html', 'style.css'].forEach((f) => app.get(f === 'index.html' ? ['/', '/index.html'] : '/' + f, (req, res) => res.sendFile(path.join(__dirname, f))));
+const PUB = path.join(__dirname, 'public');
+if (fs.existsSync(PUB)) {
+  app.use(express.static(PUB));
+} else {
+  // fallback: page files uploaded next to server.js (no public folder)
+  ['index.html', 'staff.html', 'style.css'].forEach((f) =>
+    app.get(f === 'index.html' ? ['/', '/index.html'] : '/' + f, (req, res) => res.sendFile(path.join(__dirname, f))));
+}
 
 // ---------- Staff login codes (group matric numbers) ----------
 const STAFF_MATRICS = [
@@ -19,6 +24,19 @@ const STAFF_MATRICS = [
   'ENG/2024/32014', 'ENG/2024/31750', 'ENG/2024/32102'
 ];
 const norm = (s) => String(s || '').trim().toUpperCase();
+
+// ---------- Delivery fees and payment ----------
+const DELIVERY = {
+  pickup:     { label: 'Pick up at the shop', fee: 0 },
+  department: { label: 'Delivery within my department', fee: 250 },
+  outside:    { label: 'Delivery outside school', fee: 500 }
+};
+// Online payment = bank transfer. Set these on Render (Environment tab) or edit here.
+const PAY_INFO = {
+  bank: process.env.PAY_BANK || 'Enter bank name',
+  accountName: process.env.PAY_ACCOUNT_NAME || 'Enter account name',
+  accountNumber: process.env.PAY_ACCOUNT_NUMBER || 'Enter account number'
+};
 
 // ---------- Menu (ids are generated) ----------
 const menu = JSON.parse(fs.readFileSync(path.join(__dirname, 'menu.json'), 'utf8'));
@@ -69,12 +87,17 @@ function requireStaff(req, res, next) {
 
 // ---------- Public API ----------
 app.get('/api/menu', (req, res) => res.json(menu));
+app.get('/api/config', (req, res) => res.json({ delivery: DELIVERY, pay: PAY_INFO }));
 
 app.post('/api/orders', (req, res) => {
   const name = String(req.body.name || '').trim();
   const matric = norm(req.body.matric);
   const note = String(req.body.note || '').trim().slice(0, 200);
   const raw = Array.isArray(req.body.items) ? req.body.items : [];
+  const deliveryType = DELIVERY[req.body.deliveryType] ? req.body.deliveryType : null;
+  const paymentMethod = ['cash', 'online'].includes(req.body.paymentMethod) ? req.body.paymentMethod : null;
+  const address = String(req.body.address || '').trim().slice(0, 150);
+  const payRef = String(req.body.payRef || '').trim().slice(0, 80);
 
   if (name.length < 2) return res.status(400).json({ error: 'Please enter your name.' });
   if (matric.length < 4) return res.status(400).json({ error: 'Please enter your student/matric ID.' });
@@ -89,6 +112,13 @@ app.post('/api/orders', (req, res) => {
     total += base.price * qty;
   }
   if (!items.length) return res.status(400).json({ error: 'Your cart is empty.' });
+  if (!deliveryType) return res.status(400).json({ error: 'Please choose pick up or delivery.' });
+  if (deliveryType !== 'pickup' && address.length < 3) return res.status(400).json({ error: 'Please enter your delivery location (department / hostel / address).' });
+  if (!paymentMethod) return res.status(400).json({ error: 'Please choose how you will pay.' });
+
+  const subtotal = total;
+  const deliveryFee = DELIVERY[deliveryType].fee;
+  total = subtotal + deliveryFee;
 
   const now = new Date().toISOString();
 
@@ -104,14 +134,15 @@ app.post('/api/orders', (req, res) => {
 
   const id = 'FD' + String(db.orders.length + 1).padStart(4, '0');
   const order = {
-    id, name, matric, note, items, total,
+    id, name, matric, note, items, subtotal, deliveryType, deliveryFee, address,
+    paymentMethod, paymentRef: payRef, paymentStatus: 'Unpaid', total,
     status: 'Pending',
     createdAt: now,
     history: [{ status: 'Pending', at: now, by: 'customer' }]
   };
   db.orders.push(order);
   db.transactions.push({
-    id: 'TX' + id.slice(2), orderId: id, matric, amount: total,
+    id: 'TX' + id.slice(2), orderId: id, matric, amount: total, method: paymentMethod,
     status: 'Unpaid', createdAt: now
   });
   save();
@@ -124,7 +155,8 @@ app.get('/api/track', (req, res) => {
   const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 30);
   const out = db.orders
     .filter((o) => ids.includes(o.id))
-    .map(({ id, items, total, status, createdAt, history }) => ({ id, items, total, status, createdAt, history }));
+    .map(({ id, items, subtotal, deliveryType, deliveryFee, paymentMethod, paymentStatus, total, status, createdAt, history }) =>
+      ({ id, items, subtotal, deliveryType, deliveryFee, paymentMethod, paymentStatus, total, status, createdAt, history }));
   res.json(out);
 });
 
@@ -154,21 +186,39 @@ app.patch('/api/staff/orders/:id/status', requireStaff, (req, res) => {
 
   const tx = db.transactions.find((t) => t.orderId === order.id);
   if (tx) {
-    if (status === 'Delivered') { tx.status = 'Completed'; tx.completedAt = now; tx.handledBy = req.staff; }
-    if (status === 'Rejected') { tx.status = 'Cancelled'; }
+    if (status === 'Delivered' && order.paymentMethod === 'cash' && tx.status === 'Unpaid') {
+      tx.status = 'Paid'; tx.paidAt = now; tx.handledBy = req.staff;
+      order.paymentStatus = 'Paid'; // cash collected on delivery
+    }
+    if (status === 'Rejected') { tx.status = 'Cancelled'; order.paymentStatus = 'Cancelled'; }
   }
   save();
   broadcast();
   res.json(order);
 });
 
+app.patch('/api/staff/orders/:id/payment', requireStaff, (req, res) => {
+  const order = db.orders.find((o) => o.id === req.params.id);
+  if (!order) return res.status(404).json({ error: 'Order not found.' });
+  const tx = db.transactions.find((t) => t.orderId === order.id);
+  if (order.status === 'Rejected') return res.status(400).json({ error: 'This order was rejected.' });
+  const now = new Date().toISOString();
+  order.paymentStatus = 'Paid';
+  order.history.push({ status: 'Payment confirmed', at: now, by: req.staff });
+  if (tx) { tx.status = 'Paid'; tx.paidAt = now; tx.handledBy = req.staff; }
+  save();
+  broadcast();
+  res.json(order);
+});
+
 app.get('/api/staff/summary', requireStaff, (req, res) => {
-  const completed = db.transactions.filter((t) => t.status === 'Completed');
+  const completed = db.transactions.filter((t) => t.status === 'Paid' || t.status === 'Completed');
   res.json({
     users: db.users.length,
     orders: db.orders.length,
     pending: db.orders.filter((o) => o.status === 'Pending').length,
     revenue: completed.reduce((s, t) => s + t.amount, 0),
+    deliveryFees: db.orders.filter((o) => o.paymentStatus === 'Paid').reduce((s, o) => s + (o.deliveryFee || 0), 0),
     transactions: [...db.transactions].reverse().slice(0, 100)
   });
 });

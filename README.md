@@ -43,3 +43,8 @@ ENG/2024/31983, ENG/2024/31925, ENG/2024/35041, ENG/2024/32014, ENG/2024/31750, 
 Render's free plan wipes files when the app redeploys or restarts, so saved orders can be lost.
 To keep data: add a **Disk** (paid plan) mounted at `/var/data`, then add the environment variable
 `DATA_DIR=/var/data`. For a class demo, the free plan works fine.
+
+## Delivery fees and payment
+- Pick up at the shop: free. Delivery within department: ₦250. Delivery outside school: ₦500.
+- Payment: Cash (collected on pickup/delivery) or Online (bank transfer; staff press "Confirm transfer received").
+- Set your real account on Render → Environment: `PAY_BANK`, `PAY_ACCOUNT_NAME`, `PAY_ACCOUNT_NUMBER`.

@@ -27,7 +27,7 @@
     <div class="stat"><span class="muted">Pending orders</span><b id="sPending">0</b></div>
     <div class="stat"><span class="muted">Total orders</span><b id="sOrders">0</b></div>
     <div class="stat"><span class="muted">Customers</span><b id="sUsers">0</b></div>
-    <div class="stat"><span class="muted">Completed sales</span><b id="sRevenue">₦0</b></div>
+    <div class="stat"><span class="muted">Paid sales (incl. delivery)</span><b id="sRevenue">₦0</b></div>
   </div>
 
   <div class="tabs" id="tabs"></div>
@@ -35,7 +35,7 @@
 
   <h3 class="section">Recent Transactions</h3>
   <div style="overflow-x:auto"><table>
-    <thead><tr><th>ID</th><th>Order</th><th>Matric</th><th>Amount</th><th>Status</th></tr></thead>
+    <thead><tr><th>ID</th><th>Order</th><th>Matric</th><th>Method</th><th>Amount</th><th>Status</th></tr></thead>
     <tbody id="tx"></tbody>
   </table></div>
 </main>
@@ -90,6 +90,11 @@ function setFilter(f) { filter = f; renderTabs(); renderOrders(); }
 
 function buttons(o) {
   const b = (st, cls, label) => `<button class="${cls}" onclick="setStatus('${o.id}','${st}')">${label}</button>`;
+  const pay = (o.paymentStatus === 'Unpaid' && o.status !== 'Rejected')
+    ? `<button class="a-pay" onclick="confirmPay('${o.id}')">${o.paymentMethod === 'online' ? 'Confirm transfer received' : 'Cash received'}</button>` : '';
+  return pay + statusButtons(o, b);
+}
+function statusButtons(o, b) {
   if (o.status === 'Pending') return b('Accepted', 'a-acc', 'Accept') + b('Rejected', 'a-rej', 'Reject');
   if (o.status === 'Accepted') return b('Ready', 'a-rdy', 'Mark Ready');
   if (o.status === 'Ready') return b('Delivered', 'a-del', 'Mark Delivered');
@@ -106,13 +111,21 @@ function renderOrders() {
       <div class="top"><b>${o.id} · ${esc(o.name)}</b><span class="badge s-${o.status}">${o.status}</span></div>
       <div class="muted">${esc(o.matric)} · ${new Date(o.createdAt).toLocaleString()}</div>
       <div style="margin:8px 0">${o.items.map(i => `<div class="row"><span>${i.qty} × ${esc(i.name)}</span><span>${money(i.price * i.qty)}</span></div>`).join('')}
+      ${o.deliveryFee !== undefined ? `<div class="row"><span>Delivery fee</span><span>${o.deliveryFee ? money(o.deliveryFee) : 'Free'}</span></div>` : ''}
       <div class="row total"><span>Total</span><span>${money(o.total)}</span></div></div>
+      <div class="msg">${o.deliveryType && o.deliveryType !== 'pickup' ? '🚚 <b>' + (o.deliveryType === 'department' ? 'Within department' : 'Outside school') + '</b>: ' + esc(o.address || '') : '🏪 Pick up at the shop'}</div>
+      <div class="msg">💳 ${o.paymentMethod === 'online' ? 'Online transfer' : 'Cash'}${o.paymentRef ? ' (ref: ' + esc(o.paymentRef) + ')' : ''} · <span class="${o.paymentStatus === 'Paid' ? 'paid' : 'unpaid'}">${o.paymentStatus === 'Paid' ? 'PAID' : o.paymentStatus === 'Cancelled' ? 'CANCELLED' : 'NOT PAID'}</span></div>
       ${o.note ? `<div class="msg">📝 ${esc(o.note)}</div>` : ''}
       <div class="actions">${buttons(o)}</div>
     </div>`).join('') : '<p class="muted">No orders in this view.</p>';
 }
 
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+async function confirmPay(id) {
+  try { await api(`/api/staff/orders/${id}/payment`, { method: 'PATCH', body: '{}' }); refresh(); }
+  catch (e) { alert(e.message); }
+}
 
 async function setStatus(id, status) {
   try { await api(`/api/staff/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); refresh(); }
@@ -129,7 +142,7 @@ async function refresh() {
     document.getElementById('sUsers').textContent = s.users;
     document.getElementById('sRevenue').textContent = money(s.revenue);
     document.getElementById('tx').innerHTML = s.transactions.map(t =>
-      `<tr><td>${t.id}</td><td>${t.orderId}</td><td>${esc(t.matric)}</td><td>${money(t.amount)}</td><td>${t.status}</td></tr>`).join('');
+      `<tr><td>${t.id}</td><td>${t.orderId}</td><td>${esc(t.matric)}</td><td>${t.method === 'online' ? 'Online' : 'Cash'}</td><td>${money(t.amount)}</td><td>${t.status}</td></tr>`).join('');
     renderTabs(); renderOrders();
   } catch (e) { /* handled in api() */ }
 }

@@ -55,3 +55,9 @@ h3.section{margin:22px 0 10px;font-size:16px}
 table{width:100%;border-collapse:collapse;font-size:13px;background:#fff}
 th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left}
 .login{max-width:380px;margin:60px auto;padding:0 16px}
+
+.opt{display:flex;gap:12px;align-items:flex-start;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer}
+.opt input{width:auto;margin-top:4px}
+.paybox{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:6px}
+.paid{color:var(--green);font-weight:700}.unpaid{color:var(--amber);font-weight:700}
+.a-pay{background:#0b8a8a}
